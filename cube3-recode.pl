@@ -9,7 +9,7 @@ use String::CRC32;
 
 # globals
 my $temp="210"; # temperature to print for pla
-my $material="89"; # material code 89-> PLA Magenta
+my $material="89"; # material code 89-> PLA Magenta, 86-> PLA White
 
 my $key="221BBakerMycroft";
 my $cipher = new Crypt::Blowfish $key;
@@ -17,14 +17,17 @@ my $cipher = new Crypt::Blowfish $key;
 my %opts=();
 my $usage="usage: $0 [OPTIONS] CUBE3_FILE
   -v: verbose;
-  -n: dry run;
-  -m[MATERIAL_CODE]; df: $material [89->PLA Magenta];
-  -t[TEMPERATURE]; df: $temp [PLA];
+  -n: dry run (for pack/unpack test, e.g.);
+  -m[MATERIAL_CODE] df: $material [89->PLA Magenta, 86->PLA White];
+  -t[TEMPERATURE] df: $temp [PLA];
+  -e[BFB_CODE]: replace the bfb code with the file content of BFB_CODE;
+  -i: in-place, the original file will be over written;
+  -s: create a cube3 file (.._m0.cube3) without preview and meta data (df: not creating);
   -d[LEVEL]: debug level, if > 1, bfb will be logged;
   -h: Help. This message.
   ";
 
-getopts('vhnd:m:t:', \%opts) || die $usage;
+getopts('vhnd:m:t:ie:s', \%opts) || die $usage;
 my $fn=$ARGV[0];
 die $usage if ($opts{h} or not $fn);
 
@@ -36,7 +39,6 @@ my $fn_bfb0="$fn_base.bfb";
 my $fn_bfb=$fn_base."_m.bfb";
 my $fn_fb=$fn_base."_m.bfb";
 my $fn_tail=$fn_base.".tail";
-my $fn_head=$fn_base.".head";
 my ($xml_size,$file_size);
 
 $material=$opts{m} if $opts{m};
@@ -63,6 +65,10 @@ if ($opts{d} or $opts{v}) {
   print STDERR $xml."<---bytes read:$byte_read\n";
 }
 
+if ($opts{i}) { # in-place
+  $fnm=$fn;
+}
+
 $byte_read=read $fh, $h2, 264;  # build size etc.
 $h2=~/^(....)/s;
 my $bs=unpack("L*",$1);
@@ -78,11 +84,10 @@ $xml =~ /<build_crc32>(.\d+?)<\/build_crc32>/s;
 my $crc=$1;
 
 my ($tail,$bytes);
-$byte_read=read $fh, $tail, 1024;  # 1k at a time
-while ($byte_read == 1024) {
-  $tail.=$bytes;
+do {
   $byte_read=read $fh, $bytes, 1024;  # 1k at a time
-}
+  $tail.=$bytes;
+} while ($byte_read == 1024);
 
 # decryption
 while ($body =~ /(........)/gs) {
@@ -102,19 +107,10 @@ if ($opts{d}) {
   binmode $fh_out_tail;
 }
 
-open my $fh_out, '>', "$fnm" or die "Can't open $fnm for write";
-binmode $fh_out;
-
-open my $fh_out0, '>', "$fnm0" or die "Can't open $fnm0 for write";
-binmode $fh_out0;
-
 if (not $opts{n}) {
   $xml =~ s#<type>ekocycle</type>#<type>cube</type>#s;
   $xml =~ s#<extruder1>(.+?)<code>(.+?)</code>#<extruder1>$1<code>$material</code>#s;
 }
-
-open my $fh_out, '>', "$fnm" or die "Can't open $fnm for write";
-binmode $fh_out;
 
 if ($opts{d}) {
   print STDERR "CRC32 of decrypted bfb is: ".crc32($original)," (file: $crc)\n";
@@ -152,14 +148,20 @@ if (not $opts{n}) {
   #print $original;
 }
 
-if ($opts{d}) {
-  # modified
-  print $fh_out_bfb $original;
-  close $fh_out_bfb;
+my $modified='';
+if ($opts{e}) { # we are provided with a bfb file
+  open my $fhb, '<:raw', $opts{e} or die $!;
+  $body = do { local $/; <$fhb> };
+  close $fhb;
+} else {
+  $body=$original;
 }
 
-# encrypt
-$body=$original;
+if ($opts{d}) {
+  # modified
+  print $fh_out_bfb $body;
+  close $fh_out_bfb;
+}
 
 # padding $body to the multiple of 8 bytes 
 while (length($body)%8 ne 0) {
@@ -169,9 +171,8 @@ while (length($body)%8 ne 0) {
 print STDERR "...padding for recode done.\n";
 
 # encryption
-my $modified='';
 while ($body =~ /(........)/gs) {
-   $modified.=&b2l($cipher->encrypt(&b2l($1)));
+  $modified.=&b2l($cipher->encrypt(&b2l($1)));
 }
 
 my $new_crc=crc32($modified);
@@ -187,12 +188,18 @@ my $u=pack("L",length($h1.$xml.$h2.$modified.$tail));
 $h1 =~ s/^(....)(....)(..)(..)/$1$u$3$len/;
 $u=pack("L*",length($modified));
 $h2 =~ s/^(....)/$u/s;
+
+open my $fh_out, '>', "$fnm" or die "Can't open $fnm for write";
+binmode $fh_out;
 print $fh_out $h1.$xml.$h2.$modified.$tail;
 close $fh_out;
 
-print $fh_out0 $modified;
-close $fh_out0;
-
+if ($opts{s}) {
+  open my $fh_out0, '>', "$fnm0" or die "Can't open $fnm0 for write";
+  binmode $fh_out0;
+  print $fh_out0 $modified;
+  close $fh_out0;
+}
 
 sub b2l { # big to little endian
   my $x=shift;
