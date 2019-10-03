@@ -19,7 +19,9 @@ my $usage="usage: $0 [OPTIONS] CUBE3_FILE
   -v: verbose;
   -n: dry run (for pack/unpack test, e.g.);
   -m[MATERIAL_CODE] df: $material [89->PLA Magenta, 86->PLA White];
-  -t[TEMPERATURE] df: $temp [PLA];
+  -t[TEMPERATURE] df: print temperature ${temp}C, on top of PLA or PETG/ABS profile;
+  -r: remove retract (M103) completely (df: no);
+  -P: PETG/ABS profile, df: PLA profile;
   -e[BFB_CODE]: replace the bfb code with the file content of BFB_CODE;
   -i: in-place, the original file will be over written;
   -s: create a cube3 file (.._m0.cube3) without preview and meta data (df: not creating);
@@ -27,7 +29,7 @@ my $usage="usage: $0 [OPTIONS] CUBE3_FILE
   -h: Help. This message.
   ";
 
-getopts('vhnd:m:t:ie:s', \%opts) || die $usage;
+getopts('vhnd:m:t:ie:sPr', \%opts) || die $usage;
 my $fn=$ARGV[0];
 die $usage if ($opts{h} or not $fn);
 
@@ -142,9 +144,20 @@ if (not $opts{n}) {
   # Search/replace: M204 S265 and replace with M204 S260
   $original=~s/M104 S265/M104 S260/gs;
   $original=~s/M204 S265/M204 S260/gs;
+  if (not $opts{P}) { # assuming PLA
+    $original=~s/M104 S200/M104 S145/gs;
+    $original=~s/M204 S200/M204 S145/gs;
+    $original=~s/M104 S210/M104 S155/gs;
+    $original=~s/M204 S210/M204 S155/gs;
+    # there are some 'M204 S240 P1' left in Ekocycle? too high?
+  }
+  # on top of profile temperature change
   $original=~s/M104 S250/M104 S$temp/gs;
   $original=~s/M204 S250/M204 S$temp/gs;
 
+  if ($opts{r}) { # remove retract
+    $original=~s/M103\r\n//gs;
+  }
   #print $original;
 }
 

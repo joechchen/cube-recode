@@ -23,6 +23,12 @@ cube3-recode.pl -i file.cube3 # can be used on ~/Library/Application\ Support/co
 2) String::CRC32
 3) Getopt::Std
 
+# on OSX (mainly a note for myself)
+```sh
+curl -L http://xrl.us/installperlosx | bash
+cpanm install String::CRC32 Crypt::Blowfish
+```
+
 # Load filamen code shamely copied from:
 http://www.print3dforum.com/showthread.php/1014-Cube-3-Extruder-Hub-V2-FTF-(Free-The-Filament)?highlight=load+filament
 
