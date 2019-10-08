@@ -11,12 +11,28 @@ use String::CRC32;
 my $temp="210"; # temperature to print for pla
 my $material="89"; # material code 89-> PLA Magenta, 86-> PLA White
 
+# global rules, will go throuh the encoding first
+my %RULE0=(
+  'Highest temperature E1: Search/replace: M104 S265 and replace with M104 S260' => '$original=~s/M104 S265/M104 S260/gs',
+  'Highest temperature E2: Search/replace: M204 S265 and replace with M204 S260' => '$original=~s/M204 S265/M204 S260/gs',
+);
+
+my %RULE_PLA=(
+   'E1 200C => 145c' => '$original=~s/M104 S200/M104 S145/gs',
+   'E2 200C => 145c' => '$original=~s/M204 S200/M204 S145/gs',
+   'E1 210C => 155c' => '$original=~s/M104 S210/M104 S155/gs',
+   'E2 210C => 155c' => '$original=~s/M204 S210/M204 S155/gs',
+   'Cap to 235C' => '$original=~s/M([12])04 S24\d/M{$1}04 S235/gs',
+);
+
+
 my $key="221BBakerMycroft";
 my $cipher = new Crypt::Blowfish $key;
 
 my %opts=();
 my $usage="usage: $0 [OPTIONS] CUBE3_FILE
   -v: verbose;
+  -x: decode xml; 
   -n: dry run (for pack/unpack test, e.g.);
   -m[MATERIAL_CODE] df: $material [89->PLA Magenta, 86->PLA White];
   -t[TEMPERATURE] df: print temperature ${temp}C, on top of PLA or PETG/ABS profile;
@@ -29,11 +45,14 @@ my $usage="usage: $0 [OPTIONS] CUBE3_FILE
   -h: Help. This message.
   ";
 
-getopts('vhnd:m:t:ie:sPr', \%opts) || die $usage;
+getopts('xvhnd:m:t:ie:sPr', \%opts) || die $usage;
 my $fn=$ARGV[0];
 die $usage if ($opts{h} or not $fn);
 
 $fn=~/^(.+)\.cube3$/;
+if ($opts{x}) { # xml mode
+  $fn=~/^(.+)\.xml$/;
+}
 my $fn_base=$1;
 my $fnm0=$fn_base."_m0.cube3";
 my $fnm=$fn_base."_m.cube3";
@@ -48,7 +67,23 @@ $temp=$opts{t} if $opts{t};
 
 open my $fh, '<:raw', $fn or die $!;
 my ($h1,$xml,$h2); # the "header" is h1+xml+h2, offset information needs to be updated 
+if ($opts{x}) {
+  my $byte_read;
+  my $body='';
+  my $bytes;
+  do {
+    $byte_read=read $fh, $bytes, 1024;  # 1k at a time
+    $body.=$bytes;
+  } while ($byte_read == 1024);
 
+  my $original='';
+  while ($body =~ /(........)/gs) {
+    $original.=&b2l($cipher->decrypt(&b2l($1)));
+  }
+  print $original;
+
+  exit;
+}
 my $byte_read=read $fh, $h1, 274; 
 $h1 =~ /^(....)(....)(..)(..)/s;
 $file_size=unpack("L*",$2);
@@ -96,6 +131,7 @@ while ($body =~ /(........)/gs) {
    $original.=&b2l($cipher->decrypt(&b2l($1)));
 }
 
+
 if ($opts{d}) {
   print STDERR "CRC32 of encrypted bfb is: ".crc32($body)," (file: $crc)\n";
 }
@@ -142,21 +178,33 @@ if (not $opts{n}) {
   # temperature
   # Search/replace: M104 S265 and replace with M104 S260
   # Search/replace: M204 S265 and replace with M204 S260
-  $original=~s/M104 S265/M104 S260/gs;
-  $original=~s/M204 S265/M204 S260/gs;
+  while ( my ($k, $v) = each %RULE0 ) {
+    print STDERR "eval($v) for $k\n" if $opts{d}>2;
+    if (eval($v)) {
+      print STDERR "$k: HIT!\n";
+    }
+  }
   if (not $opts{P}) { # assuming PLA
-    $original=~s/M104 S200/M104 S145/gs;
-    $original=~s/M204 S200/M204 S145/gs;
-    $original=~s/M104 S210/M104 S155/gs;
-    $original=~s/M204 S210/M204 S155/gs;
+    while ( my ($k, $v) = each %RULE_PLA ) {
+      print STDERR "eval($v) for $k\n" if $opts{d}>2;
+      if (eval($v)) {
+        print STDERR "$k: HIT!\n";
+      }
+    }
+
     # there are some 'M204 S240 P1' left in Ekocycle? too high?
   }
   # on top of profile temperature change
-  $original=~s/M104 S250/M104 S$temp/gs;
-  $original=~s/M204 S250/M204 S$temp/gs;
+  if ($original=~s/M104 S250/M104 S$temp/gs) {
+    print STDERR "E1 printing temperature changed to $temp!\n";
+  }
+  if ($original=~s/M204 S250/M204 S$temp/gs) {
+    print STDERR "E2 printing temperature changed to $temp!\n";
+  }
 
   if ($opts{r}) { # remove retract
     $original=~s/M103\r\n//gs;
+    print STDERR "All retract (M103) removed!\n";
   }
   #print $original;
 }
