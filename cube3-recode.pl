@@ -155,6 +155,9 @@ if (not $opts{n}) {
   $original=~s/M104 S250/M104 S$temp/gs;
   $original=~s/M204 S250/M204 S$temp/gs;
 
+  # test
+  $original=~s/M204 S240/M204 S$temp/gs;
+
   if ($opts{r}) { # remove retract
     $original=~s/M103\r\n//gs;
   }

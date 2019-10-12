@@ -29,7 +29,7 @@ curl -L http://xrl.us/installperlosx | bash
 cpanm install String::CRC32 Crypt::Blowfish
 ```
 
-# Load filamen code shamely copied from:
+# Load filamen code shamelessly copied from:
 http://www.print3dforum.com/showthread.php/1014-Cube-3-Extruder-Hub-V2-FTF-(Free-The-Filament)?highlight=load+filament
 
 # Feel free to modify and improve, sorry for the messy coding style.
