@@ -6,7 +6,7 @@
 1) In Cube Print (4.03) print (save-to-file, for 2a; or save-to-my-library, for 2b) to Offline EKOCYCLE Cube;
 2) Run:
 ```sh
-cube3-recode.pl file.cube3
+cube3-recode.pl file.cube3 # or file.cubepro for CubePro output
 ```
 a) Either use USB key to print file_m0.cube3 (needs -s option) or use Cube Print to open file_m.cube3 for Wifi printing;
 or 
